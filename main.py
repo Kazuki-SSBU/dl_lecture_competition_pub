@@ -8,11 +8,20 @@ from omegaconf import DictConfig
 import wandb
 from termcolor import cprint
 from tqdm import tqdm
+from torchvision import transforms
 
 from src.datasets import ThingsMEGDataset
 from src.models import BasicConvClassifier
 from src.utils import set_seed
 
+class gcn(): #標準化
+    def __init__(self):
+        pass
+
+    def __call__(self, x):
+        mean = torch.mean(x)
+        std = torch.std(x)
+        return (x - mean)/(std + 10**(-6))  # 0除算を防ぐ
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def run(args: DictConfig):
@@ -26,8 +35,12 @@ def run(args: DictConfig):
     #    Dataloader
     # ------------------
     loader_args = {"batch_size": args.batch_size, "num_workers": args.num_workers}
+    GCN = gcn()
     
-    train_set = ThingsMEGDataset("train", args.data_dir)
+    # DataAugmentation:データの反転と標準化
+    transform = transforms.Compose([transforms.RandomHorizontalFlip(p=0.5), transforms.ToTensor(),GCN]) 
+    train_set = ThingsMEGDataset("train", args.data_dir,transform=transform)
+    
     train_loader = torch.utils.data.DataLoader(train_set, shuffle=True, **loader_args)
     val_set = ThingsMEGDataset("val", args.data_dir)
     val_loader = torch.utils.data.DataLoader(val_set, shuffle=False, **loader_args)
@@ -46,7 +59,7 @@ def run(args: DictConfig):
     # ------------------
     #     Optimizer
     # ------------------
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.05) #AdamWで過学習の対策
 
     # ------------------
     #   Start training
